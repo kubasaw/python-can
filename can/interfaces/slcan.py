@@ -85,12 +85,10 @@ class slcanBus(BusABC):
         if "@" in channel:
             (channel, ttyBaudrate) = channel.split("@")
         self.serialPortOrig = serial.serial_for_url(
-            channel, baudrate=ttyBaudrate, rtscts=rtscts
+            channel, baudrate=ttyBaudrate, rtscts=rtscts, timeout=None
         )
 
         self._buffer = bytearray()
-
-        time.sleep(sleep_after_open)
 
         if bitrate is not None and btr is not None:
             raise ValueError("Bitrate and btr mutually exclusive.")
@@ -98,7 +96,9 @@ class slcanBus(BusABC):
             self.set_bitrate(bitrate)
         if btr is not None:
             self.set_bitrate_reg(btr)
-        self.open()
+        #self.open()
+
+        time.sleep(sleep_after_open)
 
         super().__init__(
             channel, ttyBaudrate=115200, bitrate=None, rtscts=False, **kwargs
@@ -130,19 +130,24 @@ class slcanBus(BusABC):
         self.open()
 
     def _write(self, string):
+        print(f"[DEBUG] Written: {string.encode() + self.LINE_TERMINATOR}")
         self.serialPortOrig.write(string.encode() + self.LINE_TERMINATOR)
         self.serialPortOrig.flush()
+        rd=self.serialPortOrig.read_until(terminator=self.LINE_TERMINATOR)
+        print(f"[DEBUG] Read: {rd}")
 
     def _read(self, timeout):
 
         # first read what is already in receive buffer
         while self.serialPortOrig.in_waiting:
-            self._buffer += self.serialPortOrig.read()
+            self._buffer += self.serialPortOrig.read(4)
         # if we still don't have a complete message, do a blocking read
-        start = time.time()
-        time_left = timeout
-        while not (ord(self._OK) in self._buffer or ord(self._ERROR) in self._buffer):
-            self.serialPortOrig.timeout = time_left
+        #start = time.time()
+        #time_left = timeout
+        #print(f"[DEBUG] Serial input buffer: {self._buffer}")
+        '''while not (ord(self._OK) in self._buffer or ord(self._ERROR) in self._buffer):
+    
+            self.serialPortOrig.timeout = timeout
             byte = self.serialPortOrig.read()
             if byte:
                 self._buffer += byte
@@ -156,8 +161,9 @@ class slcanBus(BusABC):
                 if time_left > 0:
                     continue
                 else:
-                    return None
+                    return None'''
         # return first message
+        string = None
         for i in range(len(self._buffer)):
             if self._buffer[i] == ord(self._OK) or self._buffer[i] == ord(self._ERROR):
                 string = self._buffer[: i + 1].decode()
